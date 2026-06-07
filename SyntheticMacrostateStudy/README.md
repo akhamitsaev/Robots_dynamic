@@ -1,112 +1,142 @@
-# Robots Dynamic: автономный пакет обучения one-step GNN, multistep-прогноза и исследования мицеллы
+# SynteticMacrostateStudy
 
-Пакет реализует конечную цель исследования без ручного переноса модели из `StepPrediction`:
+Автономный исследовательский модуль для анализа влияния начальных условий на макросостояния системы взаимодействующих роботов.
 
-1. Загружает фактические данные `processed_robots_data.parquet`.
-2. Обучает one-step GNN внутри этой же папки.
-3. Сохраняет веса в `models/gnn_model_weights.pth`.
-4. Использует эти веса для autoregressive multistep-прогноза.
-5. Обучает KMeans macrostate-классификатор на фактических данных.
-6. Генерирует синтетические начальные условия.
-7. Запускает synthetic rollout длиной 600 шагов.
-8. Классифицирует состояние системы на каждом шаге и считает факт/шаг/длительность мицеллы.
+Проект объединяет три шага:
 
-## Структура
+1. обучение / загрузку one-step GNN-прогнозера динамики роботов;
+2. обучение KMeans-классификатора макросостояний на фактических данных;
+3. синтетические multistep-эксперименты на 600 шагов с последующей классификацией состояний системы.
+
+> Название папки `SynteticMacrostateStudy` сохранено в соответствии с текущей структурой проекта.
+
+---
+
+## Цель исследования
+
+Определить, как начальные условия влияют на формирование макросостояний системы роботов, прежде всего на появление и устойчивость мицеллы.
+
+Исследуются факторы:
+
+- начальная плотность / радиус области размещения роботов;
+- начальная линейная скорость;
+- тип начального направления движения;
+- стохастический разброс начальных координат, скоростей и углов.
+
+---
+
+## Основная идея pipeline
 
 ```text
-Robots_dynamic_multistep_research/
-├── main.ipynb                         # главный notebook управления всем пайплайном
-├── run_research.py                    # CLI запуск
-├── config.py                          # центральный конфиг
-├── data_preprocessor.py               # загрузка parquet + кинематика
-├── gnn_model.py                       # простая GINEConv one-step модель
-├── graph_utils.py                     # node/edge features и kNN граф
-├── one_step_trainer.py                # обучение one-step GNN внутри пакета
-├── multistep_predictor.py             # autoregressive rollout + multistep metrics
-├── initial_state_generator.py         # генератор начальных условий
-├── macrostate_analyzer.py             # 11 macrostate features + KMeans classifier
+fact-data trajectories
+        ↓
+one-step GNN training
+        ↓
+autoregressive multistep predictor
+        ↓
+KMeans macrostate classifier trained on fact-data
+        ↓
+synthetic initial conditions
+        ↓
+600-step synthetic rollouts
+        ↓
+macrostate label for every step
+        ↓
+micelle onset / lifetime / final state analysis
+```
+
+---
+
+## Структура папки
+
+```text
+SynteticMacrostateStudy/
+├── main.ipynb                         # основной notebook управления экспериментом
+├── run_research.py                    # CLI-запуск pipeline
+├── config.py                          # центральная конфигурация
+├── data_preprocessor.py               # загрузка parquet и расчёт кинематики
+├── gnn_model.py                       # GINEConv one-step модель
+├── graph_dataset.py                   # подготовка графов для обучения
+├── graph_utils.py                     # node/edge features и kNN-графы
+├── gnn_trainer.py                     # обучение GNN
+├── one_step_trainer.py                # оболочка one-step обучения
+├── multistep_predictor.py             # autoregressive multistep rollout
+├── initial_state_generator.py         # генератор синтетических начальных условий
+├── macrostate_analyzer.py             # macrostate features + KMeans
 ├── experiment_runner.py               # end-to-end pipeline
-├── visualization.py                   # графики и видео/анимации real vs predicted
-├── data/                              # сюда положить processed_robots_data.parquet
-├── models/                            # сюда автоматически сохраняются веса GNN
-└── results/                           # выходные таблицы/графики/видео/модели
+├── visualization.py                   # графики и видео
+├── requirements.txt
+├── data/                              # входные данные
+├── models/                            # веса GNN и scaler-файлы
+└── results/                           # выходные таблицы, графики, видео, модели
 ```
 
-## Что нужно положить вручную
+---
 
-Теперь нужен только файл фактических данных:
+## Входные данные
+
+### 1. Фактические координаты роботов
+
+Ожидаемый файл:
 
 ```text
-StepPrediction/data/processed_robots_data.parquet -> data/processed_robots_data.parquet
+data/processed_robots_data.parquet
 ```
 
-Веса GNN переносить не нужно: они обучаются автономно и сохраняются здесь:
+Формат:
+
+```text
+file_name
+slice_id
+bot_id
+coord_x
+coord_y
+angle
+```
+
+### 2. Большой файл one-step predictions
+
+Файл `gnn_predictions.parquet` слишком большой для хранения в GitHub. Он вынесен в Google Drive:
+
+https://drive.google.com/file/d/1ta-cFK3d8eG9BzpDKPMLvyWPT9Jl2FXE/view?usp=sharing
+
+После скачивания файл нужно положить в путь, который используется проектом для one-step predictions. По умолчанию:
+
+```text
+results/gnn_predictions.parquet
+```
+
+или в путь, указанный в `config.results_save_path`, если он переопределён.
+
+Если файл отсутствует, проект может заново выполнить one-step inference после обучения модели, но этот этап может быть долгим.
+
+### 3. Веса GNN
+
+По умолчанию:
 
 ```text
 models/gnn_model_weights.pth
 ```
 
-Если файл уже существует, по умолчанию обучение пропускается. Для принудительного переобучения используйте `force_retrain=True` в notebook или `--force-retrain` в CLI.
+Если файла нет, pipeline может обучить one-step GNN заново. Если файл есть и включён режим `skip_training_if_model_exists=True`, обучение будет пропущено.
+
+---
 
 ## Установка
 
 ```bash
+python -m venv .venv
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate   # Linux/Mac
+
 pip install -r requirements.txt
 ```
 
-PyTorch Geometric иногда требует установку под конкретную версию CUDA/PyTorch. Если обычный `pip install torch-geometric` не подходит, установите PyG по инструкции для вашей версии PyTorch/CUDA.
+Для `torch-geometric` может потребоваться установка под конкретную версию PyTorch/CUDA. Если обычная установка не проходит, установите PyG по официальной инструкции для вашей версии PyTorch.
 
-## Главная логика
+---
 
-### One-step обучение
-
-Для каждого фактического эксперимента строятся графы по временным срезам:
-
-```text
-state(t), graph(t), node_features(t), edge_features(t) -> delta_state(t -> t+1)
-```
-
-Используются те же признаки, что и в текущем проекте:
-
-- node features: 9 признаков на робота;
-- edge features: 11 признаков на ребро;
-- kNN-граф на каждом временном срезе;
-- target: `Δx, Δy, Δangle` для каждого робота.
-
-Обученная модель сохраняется в `config.model_path`.
-
-Объём fact-файлов для обучения регулируется параметром:
-
-```python
-train_sample_ratio = 1.0  # 1.0 = все fact-файлы, 0.5 = случайные 50% файлов
-```
-
-Дополнительно можно ограничить число временных графов из каждого файла:
-
-```python
-max_train_samples_per_file = None  # или, например, 50 для быстрого debug
-max_val_samples_per_file = None
-max_test_samples_per_file = None
-```
-
-### Multistep прогноз
-
-Multistep не использует фактический текущий шаг после старта:
-
-```text
-seed states 0..3 -> predict step 4
-predicted 0..4  -> predict step 5
-predicted 0..5  -> predict step 6
-...
-```
-
-Скорости и ускорения на каждом новом шаге пересчитываются из уже предсказанной истории.
-
-### Macrostate
-
-KMeans обучается только на фактических macrostate-признаках. Синтетические траектории не участвуют в обучении KMeans, они только классифицируются уже обученной моделью.
-
-## Запуск через notebook
+## Основной запуск через notebook
 
 Откройте:
 
@@ -114,315 +144,402 @@ KMeans обучается только на фактических macrostate-п
 main.ipynb
 ```
 
-и выполните ячейки сверху вниз.
+и выполняйте ячейки сверху вниз.
 
-В notebook есть отдельные этапы:
+Основные этапы notebook:
 
-1. конфигурация;
+1. настройка `ResearchConfig`;
 2. загрузка fact-data;
-3. обучение one-step GNN;
-4. обучение Macrostate KMeans;
+3. обучение / загрузка one-step GNN;
+4. обучение Macrostate KMeans на фактических данных;
 5. multistep evaluation на fact-data;
-6. synthetic study 600 steps.
+6. генерация synthetic initial conditions;
+7. synthetic study на 600 шагов;
+8. сохранение таблиц, графиков и видео.
 
-## CLI запуск
+---
 
-Полный автономный запуск:
+## Ключевая конфигурация последнего эксперимента
 
-```bash
-python run_research.py --full
-```
-
-Полный запуск с принудительным переобучением one-step GNN:
-
-```bash
-python run_research.py --full --force-retrain
-```
-
-Пример с управлением синтетической скоростью и геометрией:
-
-```bash
-python run_research.py --full --speed-min 5 --speed-max 40 --n-speed-samples 3 --dish-diameter 1000 --robot-size 60
-```
-
-Только обучение one-step GNN:
-
-```bash
-python run_research.py --train-onestep
-```
-
-Только обучение Macrostate KMeans:
-
-```bash
-python run_research.py --fit-macrostate
-```
-
-Только multistep evaluation, если модель уже обучена:
-
-```bash
-python run_research.py --evaluate-real
-```
-
-Только synthetic study, если уже есть `models/gnn_model_weights.pth` и `results/research/models/macrostate_kmeans.pkl`:
-
-```bash
-python run_research.py --run-synthetic
-```
-
-
-## Synthetic initial conditions: скорость и геометрия
-
-В обновлённой версии `speed_values` больше не задаётся фиксированным списком `[10, 20, 35]`.
-Если в `InitialStateGenerator.make_sweep_specs(...)` передать `speed_values=None`, то генератор сэмплирует непрерывные значения скорости из диапазона:
+В последнем запуске использовались параметры:
 
 ```python
-speed_range=(config.speed_min, config.speed_max)
-n_speed_samples=config.n_speed_samples  # по умолчанию 3
-```
+data_path = "data/processed_robots_data.parquet"
+model_path = "models/gnn_model_weights.pth"
+output_dir = "results/research"
 
-По умолчанию это 3 случайных непрерывных значения из диапазона `[10, 35]`. Они сэмплируются один раз и затем используются во всех комбинациях `radius_values × velocity_modes × repeats`, чтобы сетка экспериментов оставалась интерпретируемой.
+# GNN
+hidden_dim = 128
+gnn_layers = 2
+dropout = 0.1
+k_neighbors = 5
 
-Геометрия синтетического старта теперь учитывает физический размер роботов:
-
-```python
-dish_diameter = 1000.0
-robot_size = 60.0  # диаметр робота
-min_center_distance = None  # None => robot_size
-```
-
-Координаты считаются координатами центров роботов. Поэтому для тарелки диаметром 1000 максимальный радиус размещения центров равен:
-
-```text
-500 - 60/2 = 470
-```
-
-Генератор не допускает начальные положения, где расстояние между центрами роботов меньше 60.
-
-Рекомендуемые `radius_values` для 50 роботов в тарелке диаметром 1000:
-
-```python
-radius_values = [250, 350, 470]
-```
-
-Интерпретация:
-
-```text
-250 — плотный старт, area fraction ≈ 0.72
-350 — средняя плотность, area fraction ≈ 0.37
-470 — разреженный старт почти на всю доступную тарелку, area fraction ≈ 0.20
-```
-
-Area fraction здесь примерно считается как:
-
-```text
-phi = n_robots * (robot_diameter / 2)^2 / radius^2
-```
-
-## Что сохраняется
-
-```text
-models/gnn_model_weights.pth
-results/research/tables/one_step_training_history.csv
-results/research/tables/one_step_test_metrics.csv
-results/research/tables/one_step_test_predictions.parquet
-results/research/tables/one_step_split.json
-results/research/tables/fact_cluster_results.csv
-results/research/tables/fact_state_interpretation.csv
-results/research/tables/multistep_fact_predictions.parquet
-results/research/tables/multistep_fact_metrics.csv
-results/research/tables/synthetic_step_states.csv
-results/research/tables/synthetic_summary.csv
-results/research/plots/*.png
-results/research/models/macrostate_kmeans.pkl
-```
-
-## Основные параметры в `config.py`
-
-```python
+# One-step training
 batch_size = 512
 num_epochs = 50
 learning_rate = 1e-3
 weight_decay = 1e-4
 early_stopping_patience = 10
-hidden_dim = 128
-gnn_layers = 2
-k_neighbors = 5
+train_sample_ratio = 0.35
+
+# Multistep / synthetic
 start_step = 3
 synthetic_total_steps = 600
 n_robots = 50
-robot_size = 60.0
-dish_diameter = 1000.0
-speed_min = 10.0
-speed_max = 35.0
-n_speed_samples = 3
+dt = 0.1
+
+# Macrostate
 n_clusters = 4
-
-# выборка для one-step обучения
-train_sample_ratio = 1.0
-max_train_samples_per_file = None
-
-# видео/анимации
-save_animations = True
-animation_fps = 10
-animation_max_frames = 300
+robot_size = 60.0
+random_state = 42
 ```
 
-Для быстрого smoke-test можно временно поставить:
+Сетка synthetic experiments:
 
 ```python
-num_epochs = 2
-train_sample_ratio = 0.2
-max_train_samples_per_file = 50
-max_val_samples_per_file = 20
-max_test_samples_per_file = 20
+center_x = 1000.0
+center_y = 500.0
+
+radius_values = [250, 350, 470]
+speed_values = [1.0, 3.0, 6.0]
+velocity_modes = ["random", "aligned", "rotational", "inward"]
+repeats = 2
 ```
 
-## Видео движения роботов
-
-Видео создаётся в `results/research/videos/`:
+Итого:
 
 ```text
-results/research/videos/one_step_real_vs_predicted.mp4      # или .gif, если ffmpeg недоступен
-results/research/videos/multistep_real_vs_predicted_*.mp4   # или .gif
+3 радиуса × 3 скорости × 4 режима движения × 2 повтора = 72 synthetic experiments
 ```
 
-Реализация использует тот же подход, что и исходный `StepPrediction/main.ipynb`: `matplotlib.animation.FuncAnimation` + `matplotlib.patches.Ellipse`, реальные роботы синие, предсказанные красные. В исходном notebook сохранение было через `writer="ffmpeg"`; в автономном пакете добавлен Windows-safe fallback: если на Windows 11 нет доступного `ffmpeg`, автоматически сохраняется `.gif` через Pillow.
+---
 
-Управление:
+## Начальные условия synthetic experiments
 
-```python
-save_animations = True
-animation_fps = 10
-animation_max_frames = 300  # None — все кадры
-animation_robot_width = 60.0
-animation_robot_height = 36.0
-```
-
-В CLI:
-
-```bash
-python run_research.py --full --no-animations
-python run_research.py --full --animation-max-frames -1
-```
-
-## Важное замечание о нормализации
-
-По умолчанию `standardize_gnn=False`, чтобы one-step training и multistep inference работали без дополнительных файлов. Если включить:
-
-```python
-standardize_gnn=True
-```
-
-то trainer сохранит scaler-файлы рядом с моделью:
+Идентификатор эксперимента кодирует параметры старта:
 
 ```text
-models/gnn_model_weights_node_scaler.pkl
-models/gnn_model_weights_edge_scaler.pkl
-models/gnn_model_weights_target_scaler.pkl
+synthetic_r350_v1.00_inward_rep0
 ```
 
-`MultiStepPredictor` автоматически загрузит их и применит при multistep rollout.
+Расшифровка:
 
+```text
+r350      → initial radius = 350
+v1.00     → speed_mean = 1.00 ед/шаг
+inward    → начальные скорости направлены к центру
+rep0      → первый случайный повтор этой конфигурации
+```
 
-## Видео после обучения, без переобучения
+`rep0` и `rep1` отличаются случайной инициализацией координат, углов, скоростей и угловых скоростей при одинаковых глобальных параметрах.
 
-В версии v5 видео создаётся отдельным шагом после обучения/evaluation. По умолчанию:
+---
+
+## Режимы начального движения
+
+```text
+random      → случайные направления скоростей
+aligned     → все роботы движутся примерно в одном направлении
+rotational  → начальное движение по касательной вокруг центра
+inward      → начальное движение к центру области
+```
+
+---
+
+## Macrostate KMeans
+
+KMeans обучается только на фактических данных. Синтетические траектории не используются для обучения кластеров.
+
+Для каждого временного шага рассчитываются macrostate-признаки:
+
+```text
+Polar_Order
+Mean_Angle
+Coordination_Num
+Mean_Distance
+Angular_Vel
+Rotation_Direction
+Rot_Order
+Center_Vel
+Velocity_Dispersion
+Std_Nearest_Dist
+Mean_Velocity
+```
+
+Затем:
+
+```text
+macrostate features
+        ↓
+StandardScaler
+        ↓
+KMeans(n_clusters=4)
+        ↓
+state label
+```
+
+Основные используемые интерпретации кластеров:
+
+```text
+Regular Structure (Мицелла)
+Sparse Distribution (Разреженное)
+```
+
+---
+
+## Multistep prediction
+
+One-step GNN обучается предсказывать:
+
+```text
+state(t) → Δx, Δy, Δangle at t+1
+```
+
+Multistep rollout работает autoregressive:
+
+```text
+fact states 0..3
+        ↓
+predict step 4
+        ↓
+recompute velocity/acceleration from predicted history
+        ↓
+predict step 5
+        ↓
+...
+        ↓
+predict step 600
+```
+
+После начальной seed-history фактические координаты больше не используются.
+
+---
+
+## Synthetic study outputs
+
+Основные таблицы:
+
+```text
+results/research/tables/synthetic_step_states.csv
+results/research/tables/synthetic_summary.csv
+```
+
+`synthetic_step_states.csv` содержит состояние системы на каждом шаге.
+
+`synthetic_summary.csv` содержит агрегированные показатели по каждому эксперименту:
+
+```text
+experiment_id
+micelle_formed
+first_micelle_step
+micelle_total_steps
+micelle_total_time
+micelle_max_lifetime_steps
+micelle_max_lifetime_time
+final_state_type
+dominant_state_type
+radius
+speed_mean
+velocity_mode
+```
+
+Полные synthetic rollout координаты сохраняются в формате fact-data:
+
+```text
+results/research/synthetic_trajectories/<experiment_id>.parquet
+```
+
+Формат:
+
+```text
+file_name
+slice_id
+bot_id
+coord_x
+coord_y
+angle
+```
+
+Это позволяет повторно запускать Macrostate/KMeans-анализ на synthetic trajectories как на обычных фактических данных.
+
+---
+
+## Графики synthetic analysis
+
+Графики сохраняются в:
+
+```text
+results/research/plots/synthetic_overview/
+```
+
+Ключевые графики:
+
+```text
+synthetic_final_state_distribution_by_mode.png
+synthetic_mean_first_micelle_step_by_mode.png
+synthetic_micelle_probability_by_mode_radius.png
+synthetic_micelle_lifetime_radius_speed.png
+synthetic_micelle_onset_lifetime_by_velocity_mode.png
+synthetic_micelle_onset_lifetime_by_speed.png
+synthetic_micelle_onset_lifetime_by_radius.png
+```
+
+### Интерпретация onset/lifetime графиков
+
+На графиках:
+
+```text
+marker = средний шаг первого появления мицеллы
+толстая линия = средняя максимальная непрерывная жизнь мицеллы
+прозрачная широкая линия + errorbar = разброс ±1 std
+p = вероятность формирования мицеллы
+n = число экспериментов с мицеллой / общее число экспериментов в группе
+```
+
+Пример:
+
+```text
+p=0.83, n=20/24
+```
+
+означает, что мицелла появилась в 20 экспериментах из 24.
+
+Важно:
+
+```text
+micelle_formed=True
+```
+
+означает, что мицелла появилась хотя бы один раз за 600 шагов.
+
+```text
+final_state_type
+```
+
+показывает только состояние на последнем шаге rollout. Поэтому возможна ситуация, когда мицелла появилась, но к концу симуляции система перешла в разреженное состояние.
+
+---
+
+## Результаты последней synthetic simulation
+
+В последнем запуске:
+
+```text
+Всего synthetic experiments: 72
+Мицелла появилась хотя бы один раз: 68 / 72 = 94.4%
+Финальное состояние = Мицелла: 23 / 72 = 31.9%
+Финальное состояние = Разреженное: 49 / 72 = 68.1%
+Доминирующее состояние = Мицелла: 52 / 72 = 72.2%
+```
+
+### Влияние начального радиуса
+
+```text
+radius=250: p=1.00, first step≈0.0, max lifetime≈322 steps, final micelle≈54.2%
+radius=350: p=1.00, first step≈0.0, max lifetime≈256 steps, final micelle≈25.0%
+radius=470: p=0.83, first step≈53.0, max lifetime≈205 steps, final micelle≈16.7%
+```
+
+Вывод: чем плотнее стартовая конфигурация, тем быстрее формируется и дольше сохраняется мицелла.
+
+### Влияние начальной скорости
+
+```text
+speed=1: p=1.00, first step≈25.6, max lifetime≈267 steps
+speed=3: p=0.92, first step≈13.4, max lifetime≈231 steps
+speed=6: p=0.92, first step≈6.9,  max lifetime≈295 steps
+```
+
+Вывод: увеличение скорости ускоряет появление мицеллы; при speed=6 наблюдается наиболее ранний onset и высокая устойчивость.
+
+### Влияние режима начального движения
+
+```text
+inward:     p=1.00, first step≈6.2,  max lifetime≈337 steps, final micelle≈50.0%
+aligned:    p=1.00, first step≈11.1, max lifetime≈209 steps, final micelle≈16.7%
+random:     p=0.89, first step≈10.1, max lifetime≈246 steps, final micelle≈33.3%
+rotational: p=0.89, first step≈36.8, max lifetime≈264 steps, final micelle≈27.8%
+```
+
+Вывод: движение к центру (`inward`) наиболее благоприятно для быстрой и устойчивой мицеллы. Вращательный режим (`rotational`) формирует мицеллу позднее.
+
+---
+
+## Видео
+
+Видео сохраняются в:
+
+```text
+results/research/videos/
+```
+
+Полезные функции:
 
 ```python
-config.auto_save_animations_during_pipeline = False
+pipeline.save_one_step_video(file_name=demo_file)
+pipeline.save_multistep_video(predictions_df=multistep_predictions, file_name=demo_file)
+pipeline.save_synthetic_video(experiment_id="synthetic_r350_v1.00_inward_rep0")
 ```
 
-Поэтому `pipeline.train_one_step_model(...)` только обучает модель и сохраняет предсказания, а видео создаётся отдельно:
+Synthetic video показывает не только движение роботов, но и KMeans-состояние на кадре:
 
-```python
-one_step_video_path = pipeline.save_one_step_video()
+```text
+step
+cluster
+state_type
+micelle=True/False
 ```
 
-Для multistep сначала выполняется evaluation:
+---
 
-```python
-multistep_predictions, multistep_metrics = pipeline.evaluate_multistep_on_fact_data(experiments, horizon=200)
-```
+## Быстрые команды
 
-Затем видео сохраняется отдельной командой:
-
-```python
-multistep_video_path = pipeline.save_multistep_video(predictions_df=multistep_predictions)
-```
-
-CLI без переобучения:
+Полный запуск:
 
 ```bash
-python run_research.py --save-onestep-video
-python run_research.py --save-multistep-video
+python run_research.py --full
 ```
 
-Если нужно старое поведение, когда видео создаётся автоматически внутри pipeline, установите:
-
-```python
-config.auto_save_animations_during_pipeline = True
-```
-
-
-## One-step GNN compatibility note
-
-The one-step GNN training path uses the original StepPrediction-style normalization: `StandardScaler` is fitted on train node features, edge features, and targets inside `gnn_trainer.py`. This behavior is always enabled to match the GitHub one-step pipeline. There is no `standardize_gnn` switch in this version.
-
-### Почему после обучения появляется "Прогнозирование для всех данных..."
-
-После train/test оригинальный GitHub-style `GNNTrainer` дополнительно делает full one-step inference по всем переданным fact-файлам и сохраняет `results/gnn_predictions.parquet`. Это нужно для one-step таблицы результатов и последующего видео. На больших данных этот этап может быть долгим: например, 43 451 граф × около 50 роботов = больше 2 млн строк predictions.
-
-В v9 добавлен progress bar для этого этапа. Если нужно только обучить веса и не сохранять one-step predictions сразу, можно временно поставить в `config.py` или `main.ipynb`:
-
-```python
-config.save_one_step_predictions_after_training = False
-```
-
-Для GitHub-compatible поведения и для one-step video оставляйте значение по умолчанию:
-
-```python
-config.save_one_step_predictions_after_training = True
-```
-
-## Demo experiment selection for videos (GitHub notebook logic)
-
-The original `StepPrediction/main.ipynb` selected a concrete experiment before plotting/video export, e.g.:
-
-```python
-sub_df = df[df['file_name'] == test_files[2]]
-```
-
-This package keeps the same logic. The demo experiment is controlled by:
-
-```python
-config.demo_split = "test"
-config.demo_file_index = 2
-config.demo_file_name = None  # set this to an exact file_name to override index selection
-```
-
-In `main.ipynb`:
-
-```python
-demo_file = pipeline.select_demo_file(experiments)  # default: test_files[2]
-
-one_step_video_path = pipeline.save_one_step_video(file_name=demo_file)
-multistep_video_path = pipeline.save_multistep_video(
-    predictions_df=multistep_predictions,
-    file_name=demo_file,
-)
-```
-
-If `results/gnn_predictions.parquet` does not exist, `save_one_step_video(...)` will not retrain the model. It will run one-step teacher-forcing inference only for `demo_file` using the existing trained checkpoint and scaler files.
-
-CLI equivalents:
+Полный запуск с переобучением GNN:
 
 ```bash
-python run_research.py --save-onestep-video --demo-file-index 2 --demo-split test
-python run_research.py --save-multistep-video --demo-file-index 2 --demo-split test
+python run_research.py --full --force-retrain
 ```
 
-or with an exact experiment name:
+Только one-step training:
 
 ```bash
-python run_research.py --save-onestep-video --demo-file-name "01_69_[45_bots_PWM_2_ex_108].pickle"
+python run_research.py --train-onestep
 ```
+
+Только KMeans:
+
+```bash
+python run_research.py --fit-macrostate
+```
+
+Только synthetic study:
+
+```bash
+python run_research.py --run-synthetic
+```
+
+---
+
+## Ограничения
+
+1. One-step GNN не является аналитической кинематической моделью. Она чувствительна к распределению координат, на котором обучалась.
+2. Synthetic initial conditions должны быть заданы в той же системе координат, что и fact-data.
+3. Multistep rollout накапливает ошибку, так как каждый следующий шаг зависит от предыдущего прогноза.
+4. KMeans-кластеры являются data-driven состояниями и требуют физической интерпретации.
+5. Для более устойчивой статистики synthetic study желательно увеличить `repeats`.
+
+---
+
+## Рекомендуемые следующие шаги
+
+- увеличить число repeats для synthetic grid;
+- добавить больше значений `radius` и `speed_mean`;
+- провести synthetic study с непрерывной выборкой скоростей;
+- проверить выводы synthetic study на фактических экспериментах;
+- обучить GNN с более инвариантными признаками: относительные координаты, нормировка относительно центра, boundary-aware features.
