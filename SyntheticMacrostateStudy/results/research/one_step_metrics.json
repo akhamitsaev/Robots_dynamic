@@ -1,0 +1,16 @@
+{
+  "gnn_train_time_minutes": 2.0774338285128278,
+  "final_train_loss": 0.5605777431936825,
+  "best_val_loss": 0.577426437820707,
+  "gnn_rmse_delta_x": 2.567873954772949,
+  "gnn_rmse_delta_y": 2.442768096923828,
+  "gnn_rmse_delta_angle": 4.009427547454834,
+  "gnn_mape_delta_x": 1863.7413330078125,
+  "gnn_mape_delta_y": 1844.58349609375,
+  "gnn_mape_delta_angle": 2846.291015625,
+  "total_predictions": 589275,
+  "train_sample_ratio": 0.35,
+  "device": "cuda",
+  "model_path": "models/gnn_model_weights.pth",
+  "results_path": "results/gnn_predictions.parquet"
+}

@@ -2,11 +2,8 @@
 /*/
 
 # Не игнорировать эти папки и всё внутри них
-!/Macrostate/
-!/Macrostate/**
-
-!/Stepprediction/
-!/Stepprediction/**
+!/SyntheticMacrostateStudy/
+!/SyntheticMacrostateStudy/**
 
 # Too large for GitHub regular Git storage
-/StepPrediction/results/kinematic_baseline/baseline_predictions.parquet
+/SyntheticMacrostateStudy/results/gnn_predictions.parquet

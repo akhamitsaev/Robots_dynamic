@@ -1,0 +1,5 @@
+Cluster,Samples,State_Type,PO,Angular_Vel,Coord_Num,Mean_Dist,Vel_Disp
+0,72356,Regular Structure (Мицелла),0.135,0.044,4.2,368.4,0.677
+1,11420,Chaotic Motion (Хаос),0.133,0.072,3.5,396.6,0.808
+2,74520,Sparse Distribution (Разреженное),0.133,0.042,3.6,413.1,0.666
+3,23598,Sparse Distribution (Разреженное),0.135,-0.023,3.9,390.9,0.74
